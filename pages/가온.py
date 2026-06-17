@@ -10,21 +10,20 @@ st.set_page_config(
     layout="centered"
 )
 
-# 깔끔한 타이틀 바 구현
+# 타이틀 및 설명
 st.title("🥗 나만의 AI 다이어트 영양사")
 st.caption("당신의 신체 정보와 목표에 딱 맞춘 하루 다이어트 식단을 제안합니다.")
 st.markdown("---")
 
 # 2. Streamlit Secrets로부터 API 키 불러오기 및 클라이언트 초기화
-# 초보자가 배포 시 API 키 누락으로 인한 에러를 방지하기 위한 예외 처리
 if "GEMINI_API_KEY" not in st.secrets:
     st.error("🔑 **API Key 누락:** Streamlit Cloud 설정(Advanced Settings)에서 `GEMINI_API_KEY`를 등록해주세요.")
     st.stop()
 
-# 정석대로 google-genai 라이브러리의 클라이언트 초기화
+# google-genai 라이브러리의 정석 클라이언트 초기화
 client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 
-# 3. 사용자 입력 양식 (UI/UX 차별화: 직관적인 사이드바와 메인 폼 구성)
+# 3. 사용자 입력 양식 (Form 구성)
 st.subheader("📋 나의 신체 정보 및 목표 입력")
 
 with st.form("diet_form"):
@@ -54,15 +53,15 @@ with st.form("diet_form"):
     
     allergy = st.text_input("⚠️ 알레르기 또는 기피 음식을 입력해주세요 (예: 오이, 우유, 없음)", value="없음")
     
-    # 제출 버튼
-    submitted = st.form_submit_with_button("🥗 맞춤형 식단 생성하기")
+    # [수정완료] 올바른 Streamlit 폼 제출 버튼 함수 사용
+    submitted = st.form_submit_button("🥗 맞춤형 식단 생성하기")
 
 # 4. 비즈니스 로직 및 AI 스트리밍 응답 구현
 if submitted:
     if gender == "선택 안함":
         st.warning("⚠️ 성별을 정확히 선택해 주세요.")
     else:
-        # 프롬프트 엔지니어링: 일관성 있고 깔끔한 가독성을 위한 구조화 요청
+        # 프롬프트 구성
         prompt = f"""
         당신은 전문 스포츠 영양사이자 다이어트 전문가입니다. 아래 사용자 정보를 바탕으로 칼로리와 영양소(탄단지)를 고려한 맞춤형 하루 다이어트 식단을 짜주세요.
 
@@ -85,14 +84,14 @@ if submitted:
         st.markdown("---")
         st.subheader("✨ AI 추천 맞춤형 식단 결과")
         
-        # 사용자 경험을 극대화하기 위한 스트리밍(Streaming) 출력 구현
+        # UI 플레이스홀더 설정 (로딩 및 텍스트 출력용)
         status_placeholder = st.empty()
         response_placeholder = st.empty()
         
         status_placeholder.info("🤖 AI 영양사가 식단을 분석하고 짜는 중입니다... 잠시만 기다려 주세요.")
         
         try:
-            # gemini-2.5-flash-lite 모델 및 generate_content_stream 사용
+            # gemini-2.5-flash-lite 스트리밍 호출
             response_stream = client.models.generate_content_stream(
                 model='gemini-2.5-flash-lite',
                 contents=prompt
@@ -101,7 +100,6 @@ if submitted:
             full_response = ""
             for chunk in response_stream:
                 full_response += chunk.text
-                # 글이 작성되는 대로 실시간으로 화면에 출력
                 response_placeholder.markdown(full_response)
                 
             status_placeholder.success("✅ 식단 생성이 완료되었습니다! 오늘부터 시작해 볼까요?")
