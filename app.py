@@ -1,160 +1,147 @@
 import streamlit as st
-from datetime import datetime
-import json
-import os
+import google.generativeai as genai
 
-# -----------------------------
-# 설정
-# -----------------------------
-st.set_page_config(page_title="다이어트 PT 코치", page_icon="💪", layout="centered")
-
-DATA_FILE = "data.json"
-
-# -----------------------------
-# 데이터 로드/저장
-# -----------------------------
-def load_data():
-    if os.path.exists(DATA_FILE):
-        try:
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
-            return {}
-    return {}
-
-def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-data = load_data()
-
-# -----------------------------
-# 기본 초기화
-# -----------------------------
-if "logs" not in data:
-    data["logs"] = []
-
-# -----------------------------
-# 사이드바 - 프로필
-# -----------------------------
-st.sidebar.title("🧍 프로필 설정")
-
-goal = st.sidebar.selectbox("목표", ["감량", "유지", "증량"])
-height = st.sidebar.number_input("키 (cm)", 140, 220, 170)
-weight = st.sidebar.number_input("몸무게 (kg)", 30, 200, 70)
-age = st.sidebar.number_input("나이", 10, 100, 25)
-
-activity = st.sidebar.selectbox(
-    "활동량",
-    ["낮음", "보통", "높음"]
+# =========================
+# 페이지 설정
+# =========================
+st.set_page_config(
+    page_title="핏코치 AI",
+    page_icon="💪",
+    layout="centered",
+    initial_sidebar_state="expanded"
 )
 
-# 간단 TDEE 계산
-def calc_target_calories():
-    base = weight * 22
-    if activity == "낮음":
-        base *= 1.2
-    elif activity == "보통":
-        base *= 1.4
-    else:
-        base *= 1.6
+# =========================
+# Gemini 설정
+# =========================
+try:
+    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=GEMINI_API_KEY)
+    model = genai.GenerativeModel("gemini-2.5-flash-lite")
+except Exception as e:
+    st.error("Gemini API 설정 오류")
+    st.error(str(e))
+    st.stop()
 
-    if goal == "감량":
-        base -= 400
-    elif goal == "증량":
-        base += 300
-
-    return int(base)
-
-target_cal = calc_target_calories()
-
-st.sidebar.markdown(f"🔥 목표 칼로리: **{target_cal} kcal**")
-
-# -----------------------------
+# =========================
 # 제목
-# -----------------------------
-st.title("💪 다이어트 PT 코치 봇")
-st.caption("식단 + 운동 + AI 코칭")
+# =========================
+st.title("💪 핏코치 AI")
+st.caption("다이어트 · 운동 · 식단 전문 AI 코치")
 
-# -----------------------------
-# 입력
-# -----------------------------
-st.subheader("🍽️ 식단 기록")
+# =========================
+# 사이드바
+# =========================
+with st.sidebar:
+    st.header("⚙️ 메뉴")
 
-meal = st.text_input("오늘 먹은 음식 (예: 김밥, 치킨)")
-meal_cal = st.number_input("칼로리 (모르면 대략 입력)", 0, 3000, 500)
+    st.markdown("""
+### 질문 예시
+- 체지방 감량 운동 추천해줘
+- 다이어트 식단 짜줘
+- 홈트 루틴 만들어줘
+- 단백질 얼마나 먹어야 해?
+- 살 빼는 운동 알려줘
+""")
 
-st.subheader("🏃 운동 기록")
+    if st.button("🔄 대화 초기화"):
+        st.session_state.messages = [
+            {
+                "role": "assistant",
+                "content": "안녕하세요! 운동·식단 전문 AI 코치입니다. 무엇이 궁금한가요?"
+            }
+        ]
+        st.rerun()
 
-exercise = st.text_input("운동 종류 (예: 걷기, 헬스)")
-exercise_time = st.number_input("운동 시간 (분)", 0, 300, 30)
+# =========================
+# 세션 상태
+# =========================
+if "messages" not in st.session_state:
+    st.session_state.messages = [
+        {
+            "role": "assistant",
+            "content": (
+                "안녕하세요! 💪\n\n"
+                "저는 운동·식단 전문 AI 코치입니다.\n\n"
+                "다이어트, 운동 루틴, 식단, 단백질 섭취 등에 대해 질문해보세요!"
+            )
+        }
+    ]
 
-# -----------------------------
-# 저장 버튼
-# -----------------------------
-if st.button("저장하기"):
-    entry = {
-        "time": str(datetime.now()),
-        "meal": meal,
-        "meal_cal": meal_cal,
-        "exercise": exercise,
-        "exercise_time": exercise_time
-    }
+# =========================
+# 채팅 출력
+# =========================
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-    data["logs"].append(entry)
-    save_data(data)
-    st.success("저장 완료!")
+# =========================
+# 사용자 입력
+# =========================
+user_input = st.chat_input("질문을 입력하세요...")
 
-# -----------------------------
-# 분석
-# -----------------------------
-st.divider()
-st.subheader("📊 오늘 분석")
+if user_input:
 
-today_logs = data["logs"][-10:]  # 최근 데이터
+    st.session_state.messages.append(
+        {
+            "role": "user",
+            "content": user_input
+        }
+    )
 
-total_cal = sum([x["meal_cal"] for x in today_logs])
-total_ex = sum([x["exercise_time"] for x in today_logs])
+    with st.chat_message("user"):
+        st.markdown(user_input)
 
-burned = total_ex * 5  # 단순 계산
+    with st.chat_message("assistant"):
 
-st.write(f"섭취 칼로리: {total_cal} kcal")
-st.write(f"운동 시간: {total_ex} 분")
-st.write(f"추정 소모: {burned} kcal")
+        with st.spinner("답변 생성 중..."):
 
-balance = total_cal - burned
+            try:
+                system_prompt = """
+당신은 운동 및 영양 전문가입니다.
 
-if balance > target_cal:
-    st.error("⚠️ 목표 초과! 식단 조절 필요")
-elif balance < target_cal - 500:
-    st.warning("⚠️ 너무 적게 먹고 있음")
-else:
-    st.success("👍 좋은 균형입니다!")
+규칙:
+- 운동, 다이어트, 체중감량, 식단 관련 질문에 답변한다.
+- 초보자도 이해하기 쉽게 설명한다.
+- 위험한 다이어트는 추천하지 않는다.
+- 운동 루틴 요청 시 예시 루틴을 제공한다.
+- 식단 요청 시 예시 식단을 제공한다.
+- 답변은 친절하고 실용적으로 작성한다.
+"""
 
-# -----------------------------
-# PT 코칭 메시지
-# -----------------------------
-st.divider()
-st.subheader("🧠 PT 코치 메시지")
+                history_text = ""
 
-if balance > target_cal:
-    msg = "오늘은 조금 과식했어요. 내일은 탄수화물 줄이고 단백질 늘려보세요!"
-elif total_ex == 0:
-    msg = "운동이 부족합니다. 20분이라도 걷기부터 시작해보세요!"
-else:
-    msg = "좋은 페이스입니다! 꾸준함이 가장 중요합니다 💪"
+                for msg in st.session_state.messages:
+                    role = "사용자" if msg["role"] == "user" else "AI"
+                    history_text += f"{role}: {msg['content']}\n"
 
-st.info(msg)
+                prompt = f"""
+{system_prompt}
 
-# -----------------------------
-# 기록 보기
-# -----------------------------
-st.divider()
-st.subheader("📜 기록")
+대화 기록:
+{history_text}
 
-for i, log in enumerate(reversed(data["logs"][-5:])):
-    st.write(f"""
-    **{log['time']}**
-    - 음식: {log['meal']} ({log['meal_cal']} kcal)
-    - 운동: {log['exercise']} ({log['exercise_time']} 분)
-    """)
+사용자 질문:
+{user_input}
+"""
+
+                response = model.generate_content(prompt)
+
+                answer = response.text
+
+            except Exception as e:
+                answer = f"""
+⚠️ 오류가 발생했습니다.
+
+오류 내용:
+{str(e)}
+"""
+
+            st.markdown(answer)
+
+    st.session_state.messages.append(
+        {
+            "role": "assistant",
+            "content": answer
+        }
+    )
